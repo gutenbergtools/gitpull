@@ -12,7 +12,9 @@ import subprocess
 import sys
 import logging
 from pathlib import Path
+import shutil
 
+VERSION = "2026.03.14"
 UPSTREAM_REPO_DIR = os.getenv('UPSTREAM_REPO_DIR') or 'https://github.com/gutenbergbooks/'
 
 # Configure logging
@@ -201,11 +203,18 @@ def remove_git_history(target_path):
             file_path.unlink()
             logger.info(f"{filename} removed successfully")
     return True
+
+
 def main():
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(
         description="Update an eBook folder with the latest files from the Git repository",
         epilog="Example: %(prog)s 12345 /path/to/target"
+    )
+    parser.add_argument(
+        "--version",
+        action="store_true",
+        help="Show version information"
     )
     parser.add_argument(
         "ebook_number",
@@ -232,6 +241,11 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Just show version information and exit if --version is specified
+    if args.version:
+        print(f"gitpull version {VERSION}")
+        sys.exit(0)
 
     # Set logging level based on verbosity
     if args.verbose:
