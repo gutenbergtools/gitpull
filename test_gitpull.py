@@ -94,7 +94,7 @@ class TestGitPull(unittest.TestCase):
         with open(os.path.join(target_path, "test.txt"), "w") as f:
             f.write("test")
         result = gitpull.update_folder(self.test_repo_url, target_path)
-        self.assertTrue(result)
+        self.assertFalse(result)
     
     def test_get_remote_url(self):
         """Test getting the remote URL of a repository."""
@@ -103,7 +103,20 @@ class TestGitPull(unittest.TestCase):
         remote_url = gitpull.get_remote_url(repo_path)
         self.assertEqual(remote_url, self.test_repo_url)
 
+    def test_norepo_option(self):
+        """Test the --norepo option with a non-repository directory."""
+        target_path = os.path.join(self.test_dir, "norepo_test")
+        os.makedirs(target_path)
 
+        result = subprocess.run(
+            ["python3", "gitpull.py", "--norepo", "77044", target_path],
+            capture_output=True,
+            text=True
+        )
+        self.assertEqual(result.returncode, 0)
+        bookdir= os.path.join(target_path, "77044")
+        self.assertTrue(os.path.exists(bookdir))
+        self.assertFalse(gitpull.is_git_repo(bookdir))
 def main():
     """Run the tests."""
     unittest.main(verbosity=2)

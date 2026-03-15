@@ -27,7 +27,9 @@ def run_command(cmd, cwd=None, noerror=False):
             text=True,
             check=True
         )
-        return result.stdout.strip()
+        if result.stdout is not None:
+            result.stdout = result.stdout.strip()
+        return result.stdout
     except subprocess.CalledProcessError as e:
         if not noerror:
             logger.error(f"Error running command: {' '.join(cmd)}")
@@ -175,6 +177,28 @@ def update_folder(repo_url, target_path):
             return False
 
 
+def remove_git_history(target_path):
+    """
+    Remove Git history from the target path.
+    Deletes the .git directory and common Git-related files like .gitignore, .gitattributes,
+      README.md, and LICENSE.txt if they exist.
+    It might be cleaner to use "git archive" to export only the files without Git history,
+      but our server does not support the protocol. Would also need to remove untracked files.
+      Any existing unchanged files should not be updated.
+    """
+    git_dir = Path(target_path) / ".git"
+    if git_dir.exists() and git_dir.is_dir():
+        shutil.rmtree(git_dir)
+        logger.info("Git history removed successfully")
+    else:
+        logger.info("No Git history found to remove")
+    files_to_remove = [".gitignore", ".gitattributes", "README.md", "LICENSE.txt"]
+    for filename in files_to_remove:
+        file_path = Path(target_path) / filename
+        if file_path.exists():
+            file_path.unlink()
+            logger.info(f"{filename} removed successfully")
+    return True
 def main():
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(
@@ -193,6 +217,11 @@ def main():
         "-v", "--verbose",
         action="store_true",
         help="Enable verbose output"
+    )
+    parser.add_argument(
+        "--norepo",
+        action="store_true",
+        help="Do not keep Git history"
     )
 
     args = parser.parse_args()
@@ -215,7 +244,13 @@ def main():
     logger.info(f"Pulling from {origin} to {destination}")
 
     success = update_folder(origin, destination)
+    if args.norepo and success:
+        success = remove_git_history(destination)
 
+    if success:
+        print(f"Success: eBook {args.ebook_number} copied to {destination}.")
+    else:
+        print(f"Failed: unable to copy eBook {args.ebook_number}, see log.")
     sys.exit(0 if success else 1)
 
 
