@@ -4,9 +4,9 @@ Update an eBook folder with the latest files from the Git repository.
 
 ## Overview
 
-`gitpull` is a simple Python utility that helps you keep a local folder synchronized with an eBook Git repository. It automatically clones the repository if it doesn't exist locally, or pulls the latest changes if it does. 
+`gitpull` is a simple Python utility that helps you keep a local folder synchronized with an eBook Git repository. It automatically clones the repository if it doesn't exist locally, or pulls the latest changes if it does.
 
-`puller` invokes gitpull in the ibiblio context. it looks for .zip.trig files in the system dopull directory, invokes gitpull on them to build or re-sync a source repo in the ibiblio FILES directory, and if successful, moves the .zip.trig file to the system `dopush` directory it is intended to run in a privileged account - most accounts do not have write access to the 
+`puller` invokes gitpull in the ibiblio context. it looks for .zip.trig files in the system dopull directory, invokes gitpull on them to build or re-sync a source repo in the ibiblio FILES directory, and if successful, moves the .zip.trig file to the system `dopush` directory it is intended to run in a privileged account - most accounts do not have write access to the
 
 ## Installation
 
@@ -47,14 +47,14 @@ gitpull
 - `repository_url`: Number of the eBook Git repository to clone/pull from (e.g., `12345`)
 - `target_path`: The local path _containing_ the eBook folder where the repository should be cloned or updated (e.g., `servername/1/2/3/4`, to update `servername/1/2/3/4/12345`)
 
-puller 
+puller
 - has no arguments
 - Reads three variables from its environment: PUBLIC, PRIVATE and UPSTREAM_REPO_DIR, which it uses to form a repository url and a target path for gitpull
 - the default for PRIVATE is '' and for UPSTREAM_REPO_DIR is 'https://github.com/gutenbergbooks/' (which is used for testing)
 - puller looks for 'trig' files named NNNNN.zip.trig in $PRIVATE/logs/dopull', extracts NNNNN and uses that as the git repository number for gitpull. The trig file is then moved to the $PRIVATE/logs/dopush directory, which is how indexing and ebook builds are triggered.
 - these directories should be created if they do not exist. The target directories need to be writable by the user.
 
-if the target directories are not owned by the user who runs the gitpull or puller, the directories must be configured as "safe" with the command 
+if the target directories are not owned by the user who runs the gitpull or puller, the directories must be configured as "safe" with the command
 
 `git config --global safe.directory '/path/to/directory/*'`
 
@@ -73,6 +73,8 @@ for gitpull:
 - `-h, --help`: Show help message and exit
 - `-v, --verbose`: Enable verbose output
 - `--norepo`: Do not keep Git history
+- `--createdir`: Create `target_path` if needed
+
 
 ### Examples for gitpull
 
@@ -82,7 +84,7 @@ Clone a new repository or update an existing repository:
 python3 gitpull.py 12345 /path/to/target
 ```
 
-or 
+or
 `pipenv run gitpull 12345 /path/to/target`
 
 
