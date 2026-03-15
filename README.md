@@ -74,6 +74,8 @@ for gitpull:
 
 - `-h, --help`: Show help message and exit
 - `-v, --verbose`: Enable verbose output
+- `--norepo`: Do not keep Git history
+- `--createdir`: Create `target_path` if needed
 
 ### Examples for gitpull
 
@@ -108,9 +110,9 @@ or
     - `git checkout -f origin/main`
   - Restore state
     - `git switch main`
-  - Remove untracked files - force, include directories & ignored (.zip) files
+  - Remove untracked files - force, include directories, & ignored (.zip) files
     - `git clean -fdx`
-- **The eBook folder will now be a Git repository**: but only for updated eBooks
+- **The eBook folder will now be a Git repository, unless `--norepo` was used**
 - **It does not update the database**: It is assumed that the chron-dopush.sh call to autodelete.py will do that
 
 

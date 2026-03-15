@@ -7,7 +7,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="gitpull",
-    version="0.2.0",
+    version="0.3.0",
     author="Project Gutenberg",
     description="Update a folder with the latest files from a Git repository",
     long_description=long_description,
