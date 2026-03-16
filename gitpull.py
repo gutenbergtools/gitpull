@@ -12,7 +12,10 @@ import subprocess
 import sys
 import logging
 from pathlib import Path
+import shutil
 
+VERSION = "2026.03.16"
+UPSTREAM_REPO_DIR = os.getenv('UPSTREAM_REPO_DIR') or 'https://github.com/gutenbergbooks/'
 # Configure logging
 logging.basicConfig(filename='gitpull.log', level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -199,11 +202,18 @@ def remove_git_history(target_path):
             file_path.unlink()
             logger.info(f"{filename} removed successfully")
     return True
+
+
 def main():
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(
         description="Update an eBook folder with the latest files from the Git repository",
         epilog="Example: %(prog)s 12345 /path/to/target"
+    )
+    parser.add_argument(
+        "--version",
+        action="store_true",
+        help="Show version information"
     )
     parser.add_argument(
         "ebook_number",
@@ -231,6 +241,9 @@ def main():
 
     args = parser.parse_args()
 
+    if args.version:
+        print(f"gitpull version {VERSION}")
+        sys.exit(0)
     # Set logging level based on verbosity
     if args.verbose:
         logger.setLevel(logging.DEBUG)
@@ -239,6 +252,7 @@ def main():
     target_path = Path(args.target_path).resolve()
     if not target_path.exists() or not target_path.is_dir():
         if args.createdirs:
+            # Create the target directory if it doesn't exist
             logger.info(f"Creating target directory: {target_path}")
             try:
                 target_path.mkdir(parents=True, exist_ok=True)
@@ -252,13 +266,15 @@ def main():
             sys.exit(1)
 
     # Update the directory
-    origin = f"https://r.pglaf.org/git/{args.ebook_number}.git/"
+    origin = f"{UPSTREAM_REPO_DIR}{args.ebook_number}.git/"
 
     # destination is a directory named with the ebook number under the target path
     destination = f"{args.target_path}/{args.ebook_number}"
     logger.info(f"Pulling from {origin} to {destination}")
 
     success = update_folder(origin, destination)
+    # Remove Git history if not needed, but only if the update was successful to avoid
+    # deleting existing files on failure
     if args.norepo and success:
         success = remove_git_history(destination)
 
