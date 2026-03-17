@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-from gutenbergtools/pglaf-gitpull: Update a folder with the latest files from a Git repository
+from gutenbergtools/gitpull: Update a folder with the latest files from a Git repository
 
-This tool clones or pulls the latest changes from a Git repository into a
+This tool clones or pulls the latest changes from a PG Git eBook repository into a
 specified target folder.
 """
 
@@ -15,7 +15,8 @@ from pathlib import Path
 import shutil
 
 VERSION = "2026.03.16"
-UPSTREAM_REPO_DIR = os.getenv('UPSTREAM_REPO_DIR') or 'https://github.com/gutenbergbooks/'
+UPSTREAM_REPO_DIR = os.getenv('UPSTREAM_REPO_DIR') or ''
+
 # Configure logging
 logging.basicConfig(filename='gitpull.log', level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -247,6 +248,11 @@ def main():
     # Set logging level based on verbosity
     if args.verbose:
         logger.setLevel(logging.DEBUG)
+
+    if not UPSTREAM_REPO_DIR:
+        logger.error("UPSTREAM_REPO_DIR environment variable is not set")
+        print("Failed: UPSTREAM_REPO_DIR environment variable is not set.")
+        sys.exit(1)
 
     # Check if target exists and is a directory
     target_path = Path(args.target_path).resolve()

@@ -9,6 +9,7 @@ import argparse
 import os
 import subprocess
 import logging
+import sys
 
 # Configure logging
 logging.basicConfig(filename='updatehosts.log', level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -33,7 +34,7 @@ def load_env_file(env_file='.env'):
     """
     if not os.path.exists(env_file):
         logger.warning(f".env file not found: {env_file}")
-        return
+        return False
     with open(env_file, 'r') as f:
         for line in f:
             line = line.strip()
@@ -43,6 +44,7 @@ def load_env_file(env_file='.env'):
                 key, value = line.split('=', 1)
                 os.environ[key.strip()] = value.strip()
                 logger.info(f"Loaded env var: {key.strip()}")
+    return True
 
 def run_python_script_via_ssh(host, script_path, script_args=None, timeout=60):
     """Run a Python script on a remote server via SSH."""
@@ -132,7 +134,9 @@ def update_gitpull_to_hosts():
 
 def main():
     """Main entry point for the script."""
-    load_env_file()  # Load .env variables at the start
+    if not load_env_file():  # Load .env variables at the start
+        print("Failed to load environment variables.")
+        sys.exit(1)
     parser = argparse.ArgumentParser(
         description="Update an eBook directory on the mirrors with the latest files from the Git repository",
         epilog="Example: %(prog)s 12345"
@@ -159,7 +163,7 @@ def main():
     print(f"Trigger processing of #{args.ebook_number} on ibiblio...")
     run_ssh_command(ibiblio, "touch", [f"{DOPULL_LOG_DIR}{args.ebook_number}.zip.trig"])
     print("Success!\n")
-
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()
