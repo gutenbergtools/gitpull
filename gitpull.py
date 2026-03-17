@@ -266,7 +266,7 @@ def main():
             sys.exit(1)
 
     # Update the directory
-    origin = f"{UPSTREAM_REPO_DIR}{args.ebook_number}.git/"
+    origin = f"{UPSTREAM_REPO_DIR}/{args.ebook_number}.git/"
 
     # destination is a directory named with the ebook number under the target path
     destination = f"{args.target_path}/{args.ebook_number}"
