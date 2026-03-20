@@ -48,8 +48,6 @@ def scan_dopull_log():
     """ 
     Scan the dopull log directory for new files.
     """
-    current_user_id = os.getuid()
-
     for filename in sorted(os.listdir(DOPULL_LOG_DIR)):
         mode = os.stat(os.path.join(DOPULL_LOG_DIR, filename))[stat.ST_MODE]
         # skip directories JIC

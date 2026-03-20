@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-from gutenbergtools/pglaf-gitpull: Update a folder with the latest files from a Git repository
+from gutenbergtools/gitpull: Update a folder with the latest files from a Git repository
 
-This tool clones or pulls the latest changes from a Git repository into a
+This tool clones or pulls the latest changes from a PG Git eBook repository into a
 specified target folder.
 """
 
@@ -12,6 +12,10 @@ import subprocess
 import sys
 import logging
 from pathlib import Path
+import shutil
+
+VERSION = "2026.03.16"
+UPSTREAM_REPO_DIR = os.getenv('UPSTREAM_REPO_DIR') or ''
 
 # Configure logging
 logging.basicConfig(filename='gitpull.log', level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -27,7 +31,9 @@ def run_command(cmd, cwd=None, noerror=False):
             text=True,
             check=True
         )
-        return result.stdout.strip()
+        if result.stdout:
+            result.stdout = result.stdout.strip()
+        return result.stdout
     except subprocess.CalledProcessError as e:
         if not noerror:
             logger.error(f"Error running command: {' '.join(cmd)}")
@@ -175,11 +181,40 @@ def update_folder(repo_url, target_path):
             return False
 
 
+def remove_git_history(target_path):
+    """
+    Remove Git history from the target path.
+    Deletes the .git directory and common Git-related files like .gitignore, .gitattributes,
+      README.md, and LICENSE.txt if they exist.
+    It might be cleaner to use "git archive" to export only the files without Git history,
+      but our server does not support the protocol. Would also need to remove untracked files.
+      Any existing unchanged files should not be updated.
+    """
+    git_dir = Path(target_path) / ".git"
+    if git_dir.exists() and git_dir.is_dir():
+        shutil.rmtree(git_dir)
+        logger.info("Git history removed successfully")
+    else:
+        logger.info("No Git history found to remove")
+    files_to_remove = [".gitignore", ".gitattributes", "README.md", "LICENSE.txt"]
+    for filename in files_to_remove:
+        file_path = Path(target_path) / filename
+        if file_path.exists():
+            file_path.unlink()
+            logger.info(f"{filename} removed successfully")
+    return True
+
+
 def main():
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(
         description="Update an eBook folder with the latest files from the Git repository",
         epilog="Example: %(prog)s 12345 /path/to/target"
+    )
+    parser.add_argument(
+        "--version",
+        action="store_true",
+        help="Show version information"
     )
     parser.add_argument(
         "ebook_number",
@@ -194,28 +229,65 @@ def main():
         action="store_true",
         help="Enable verbose output"
     )
+    parser.add_argument(
+        "--norepo",
+        action="store_true",
+        help="Do not keep Git history"
+    )
+    parser.add_argument(
+        "--createdirs",
+        action="store_true",
+        help="Create target directories if they don't exist"
+    )
 
     args = parser.parse_args()
 
+    if args.version:
+        print(f"gitpull version {VERSION}")
+        sys.exit(0)
     # Set logging level based on verbosity
     if args.verbose:
         logger.setLevel(logging.DEBUG)
 
+    if not UPSTREAM_REPO_DIR:
+        logger.error("UPSTREAM_REPO_DIR environment variable is not set")
+        print("Failed: UPSTREAM_REPO_DIR environment variable is not set.")
+        sys.exit(1)
+
     # Check if target exists and is a directory
     target_path = Path(args.target_path).resolve()
     if not target_path.exists() or not target_path.is_dir():
-        logger.error(f"{args.target_path} does not exist or is not a directory")
-        sys.exit(1)
+        if args.createdirs:
+            # Create the target directory if it doesn't exist
+            logger.info(f"Creating target directory: {target_path}")
+            try:
+                target_path.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                logger.error(f"Failed to create target directory: {e}")
+                print(f"Failed: unable to create target directory {target_path}, see log.")
+                sys.exit(1)
+        else:
+            logger.error(f"{args.target_path} does not exist or is not a directory")
+            print(f"Failed: {args.target_path} does not exist or is not a directory")
+            sys.exit(1)
 
     # Update the directory
-    origin = f"https://r.pglaf.org/git/{args.ebook_number}.git/"
+    origin = f"{UPSTREAM_REPO_DIR}/{args.ebook_number}.git/"
 
     # destination is a directory named with the ebook number under the target path
     destination = f"{args.target_path}/{args.ebook_number}"
     logger.info(f"Pulling from {origin} to {destination}")
 
     success = update_folder(origin, destination)
+    # Remove Git history if not needed, but only if the update was successful to avoid
+    # deleting existing files on failure
+    if args.norepo and success:
+        success = remove_git_history(destination)
 
+    if success:
+        print(f"Success: eBook {args.ebook_number} copied to {destination}.")
+    else:
+        print(f"Failed: unable to copy eBook {args.ebook_number}, see log.")
     sys.exit(0 if success else 1)
 
 
