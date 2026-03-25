@@ -271,6 +271,7 @@ def main():
     if args.version:
         print(f"gitpull version {VERSION}")
         sys.exit(0)
+
     # Set logging level based on verbosity
     if args.verbose:
         logger.setLevel(logging.DEBUG)

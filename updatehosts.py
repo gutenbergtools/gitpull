@@ -170,8 +170,8 @@ def update_gitpull_to_hosts():
 
 def main():
     """Main entry point for the script."""
-    if not MIRROR_BIN or not DOPULL_LOG_DIR:
-        logger.warning("One or more required environment variables are not set.")
+    if not MIRROR_BIN or not DOPULL_LOG_DIR or not EBOOKS_DIR:
+        logger.error("One or more required environment variables are not set.")
         print("One or more required environment variables are not set.")
         sys.exit(1)
     parser = argparse.ArgumentParser(
@@ -195,10 +195,11 @@ def main():
             sys.exit(1)
         print("Successfully updated gitpull script on all hosts.")
         sys.exit(0)
+
     # Get the destination path for the eBook number
     destination = get_ebook_path(args.ebook_number)
     print(f"{args.ebook_number} goes to {destination}\n")
-    destination = EBOOKS_DIR + destination
+    destination = os.path.join(EBOOKS_DIR, destination)
     for host in mirrors:
         print("Copying to " + host + "...")
         # Call gitpull.py on the host, creating the target directory if it doesn't exist, no history
