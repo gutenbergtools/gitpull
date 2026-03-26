@@ -20,9 +20,14 @@ def load_env_file(filepath=".env"):
     """
     Reads an .env file and sets environment variables.
     Expected format:    THEKEY=the_value
+    Assumes .env file is located in the directory where this script is.
     """
+    directory = os.path.dirname(os.path.abspath(__file__))
+    filepath = os.path.join(directory, filepath)
+
     if not os.path.exists(filepath):
         # User could set them manually...
+        #print(f"Warning: {filepath} file not found. Environment variables must be set manually.")
         return
 
     with open(filepath, "r") as file:
@@ -36,12 +41,14 @@ def load_env_file(filepath=".env"):
             # Strip blanks & quotes
             value = value.strip().strip('\'\"')
             os.environ[key] = value
+            # print(f"Loaded environment variable: {key}={value}")
 
 
 # Load the variables from the.env file
 load_env_file()
 
 UPSTREAM_REPO_DIR = os.getenv('UPSTREAM_REPO_DIR') or ''
+#print(f"Using UPSTREAM_REPO_DIR: {UPSTREAM_REPO_DIR}")
 
 # Configure logging
 logging.basicConfig(filename='gitpull.log', level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
