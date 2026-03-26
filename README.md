@@ -75,7 +75,7 @@ for gitpull:
 - `-h, --help`: Show help message and exit
 - `-v, --verbose`: Enable verbose output
 - `--norepo`: Do not keep Git history
-- `--createdir`: Create `target_path` if needed
+- `--createdirs`: Create `target_path` if needed
 
 ### Examples for gitpull
 

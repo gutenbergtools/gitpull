@@ -39,9 +39,6 @@ def load_env_file(filepath=".env"):
 load_env_file()
 
 PRIVATE = os.getenv('PRIVATE') or ''
-# This is where .zip.trig files go on ibiblio :
-if PRIVATE:
-    DOPULL_LOG_DIR = os.path.join(PRIVATE, 'logs', 'dopull')
 # These are the locations for the gitpull script on the hosts
 IBIBLIO_BIN = os.getenv('IBIBLIO_BIN') or ''
 MIRROR_BIN = os.getenv('MIRROR_BIN') or ''
@@ -170,10 +167,6 @@ def update_gitpull_to_hosts():
 
 def main():
     """Main entry point for the script."""
-    if not MIRROR_BIN or not DOPULL_LOG_DIR or not EBOOKS_DIR:
-        logger.error("One or more required environment variables are not set.")
-        print("One or more required environment variables are not set.")
-        sys.exit(1)
     parser = argparse.ArgumentParser(
         description="Update an eBook directory on the mirrors with the latest files from the Git repository",
         epilog="Example: %(prog)s 12345"
@@ -196,6 +189,14 @@ def main():
         print("Successfully updated gitpull script on all hosts.")
         sys.exit(0)
 
+    if not MIRROR_BIN or not PRIVATE or not EBOOKS_DIR:
+        logger.error("One or more required environment variables are not set.")
+        print("One or more required environment variables are not set.")
+        sys.exit(1)
+        
+    # This is where .zip.trig files go on ibiblio :
+    DOPULL_LOG_DIR = os.path.join(PRIVATE, 'logs', 'dopull')
+
     # Get the destination path for the eBook number
     destination = get_ebook_path(args.ebook_number)
     print(f"{args.ebook_number} goes to {destination}\n")
@@ -203,7 +204,7 @@ def main():
     for host in mirrors:
         print("Copying to " + host + "...")
         # Call gitpull.py on the host, creating the target directory if it doesn't exist, no history
-        sargs = ["--norepo", "--createdir", f"{args.ebook_number}", f"{destination}"]
+        sargs = ["--norepo", "--createdirs", f"{args.ebook_number}", f"{destination}"]
         run_python_script_via_ssh(host, f"{MIRROR_BIN}/gitpull.py", sargs)
         print("Success!\n")
 
