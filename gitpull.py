@@ -14,7 +14,7 @@ import logging
 from pathlib import Path
 import shutil
 
-VERSION = "2026.03.25"
+VERSION = "2026.03.26"
 
 def load_env_file(filepath=".env"):
     """
@@ -238,22 +238,17 @@ def main():
         epilog="Example: %(prog)s 12345 /path/to/target"
     )
     parser.add_argument(
-        "--version",
-        action="store_true",
-        help="Show version information"
-    )
-    parser.add_argument(
         "ebook_number",
-        help="Number of the eBook Git repository to clone/pull from"
+        help="Number of the eBook Git repository to pull from"
     )
     parser.add_argument(
         "target_path",
         help="Path to the target folder to update"
     )
     parser.add_argument(
-        "-v", "--verbose",
-        action="store_true",
-        help="Enable verbose output"
+        "-v", "--version",
+         action="version",
+        version=f"%(prog)s version {VERSION}"
     )
     parser.add_argument(
         "--norepo",
@@ -267,14 +262,6 @@ def main():
     )
 
     args = parser.parse_args()
-
-    if args.version:
-        print(f"gitpull version {VERSION}")
-        sys.exit(0)
-
-    # Set logging level based on verbosity
-    if args.verbose:
-        logger.setLevel(logging.DEBUG)
 
     if not UPSTREAM_REPO_DIR:
         logger.error("UPSTREAM_REPO_DIR environment variable is not set")

@@ -11,7 +11,9 @@ import subprocess
 import logging
 import sys
 
-VERSION = "2026.03.25"
+from more_itertools import only
+
+VERSION = "2026.03.26"
 
 def load_env_file(filepath=".env"):
     """
@@ -176,6 +178,13 @@ def main():
         help="Number of the eBook Git repository to pull from"
     )
     parser.add_argument(
+        "-v", "--version",
+        action="version",
+        version=f"%(prog)s version {VERSION}"
+    )
+    # Does not need "ebook_number" argument, but have not found an easy way to make it
+    # optional only in this case
+    parser.add_argument(
         "--update-gitpull",
         action="store_true",
         help="Update the gitpull script on all hosts"
@@ -193,7 +202,7 @@ def main():
         logger.error("One or more required environment variables are not set.")
         print("One or more required environment variables are not set.")
         sys.exit(1)
-        
+
     # This is where .zip.trig files go on ibiblio :
     DOPULL_LOG_DIR = os.path.join(PRIVATE, 'logs', 'dopull')
 
