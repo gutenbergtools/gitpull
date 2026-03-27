@@ -4,17 +4,14 @@
 
 # Parent directory of where to look for files to push out:
 STARTDIR=/home/push
-GETPATH=/home/gbnewby/.bin/pgpath.pl
-today=`date +%m%d%Y`
-export VERSION_CONTROL=numbered # For --backup, below.
+# Where to move files after uploading them:
+DONE=/home/DONE
+
 
 # Output:
 OUTFILE=/tmp/$$
 LOGFILE=/home/gbnewby/logs/dopull-log.txt
 LASTRUNFILE=/home/gbnewby/logs/dopull-lastrun
-
-# Where to move files after uploading them:
-DONE=/home/DONE
 
 # Where to scp to -- note, we presume all permissions and the right directories etc. are in place there.
 IBIBLIOHOST="gutenberg.login.ibiblio.org"
@@ -55,8 +52,6 @@ else
   /bin/date > ${PULLRUNNING}
 fi
 
-# Section 2: For post-10K files
-# Note that Section 1 was removed from service on August 3 2020.
 cd $STARTDIR
 
 # Assume anything ending in .zip is needed
@@ -73,12 +68,7 @@ if [ `/bin/ls -l | grep -c zip` != 0 ] ; then
 
 		# If owned by www-data or nfenwick, there should be a record in the workflow tool:
 		getwwemail=""
-		repocheck="YES" # Check if not owned by nenwick
 
-		if [ x${ME} = xnfenwick ] ; then
-			getwwemail=${ME}
-			repocheck="NO"  # Don't need to check
-		fi
 		if [ x${ME} = xwww-data ] ; then
 			getwwemail=${ME}
 		fi
@@ -102,55 +92,69 @@ if [ `/bin/ls -l | grep -c zip` != 0 ] ; then
 
 		# Note that if sent to www-data, it will go to someone who will investigate why the above didn't work.
 
+# Parent directory of where to look for files to push out:
+STARTDIR=/home/push
+# Where to move files after uploading them:
+DONE=/home/DONE
+
+cd $STARTDIR
+# process txt and json files from Errata Workbench / Workflow
+if /bin/ls *.txt *.json >/dev/null 2>&1 ; then
+  for i in *.txt *.json ; do
+		[ -e "$i" ] || continue
+		# get the book number
+		bn=${i%.*}
+		# update the hosts
+		python3 updatehosts.py $bn
+		if [ $? -ne 0 ] ; then
+			echo "Got $? exit status, this file did not go!" >> $OUTFILE; BOMBED='ERROR'
+		else
+			echo "Success!" >> $OUTFILE; echo "" >> $OUTFILE
+			# move file to DONE
+			/bin/mv -f $i ${DONE}/
+		fi      # $? != 0
+	done
+fi
+
 		# Get the remote directory path, exit on error if it fails
 		remotedirs=`$GETPATH $i`
-		if [ $? -ne 0 ] ; then
-	    echo "$GETPATH failed for ${i}.  Skipping." >> $OUTFILE
-	    BOMBED='ERROR'
-		else
-	    echo "${i} goes to $remotedirs" >> $OUTFILE
-	    destdirs=$remotedirs/`echo $i | sed 's/\.zip//'`
-	    jsonroot=${destdirs}/`echo $i | sed 's/\.zip//'`
-	    for j in ${TOHOSTS}; do
-				echo "" >> ${OUTFILE}
-				echo "Copying and unzipping on ${j}..." >> ${OUTFILE}
-				# gbn: my 'gbnewby' went away June 3 2022... temp, I needed
-				# to explicitly use a different username
-				if [ "${j}" = "${IBIBLIOHOST}" ] ; then
-						j=gbnewby@${j}
-				fi
-				# Create destination directory for the .zip
-				${SSH} ${j} mkdir -p ${TMPLOC}/
-				# Upload:
-				${SCP} -q ${i} ${j}:${TMPLOC}/${i}
+		echo "${i} goes to $remotedirs" >> $OUTFILE
+		destdirs=$remotedirs/`echo $i | sed 's/\.zip//'`
+		jsonroot=${destdirs}/`echo $i | sed 's/\.zip//'`
+		for j in ${TOHOSTS}; do
+			echo "" >> ${OUTFILE}
+			echo "Copying and unzipping on ${j}..." >> ${OUTFILE}
+			# gbn: my 'gbnewby' went away June 3 2022... temp, I needed to explicitly use a different username
+			if [ "${j}" = "${IBIBLIOHOST}" ] ; then
+					j=gbnewby@${j}
+			fi
 
-				if [ $? -ne 0 ] ; then
-					echo "Got $? exit status, this file did not go!" >> $OUTFILE; BOMBED='ERROR'
+			if [ $? -ne 0 ] ; then
+				echo "Got $? exit status, this file did not go!" >> $OUTFILE; BOMBED='ERROR'
+			else
+				# ibiblio needs chgrp as well as chmod
+				# we'll run fixperm.sh (recursive chmod) rather than separate commands:
+				bn=`echo $i | /usr/bin/sed 's/\.zip//'`
+				${SSH} ${j} "chmod 700 ${TMPLOC}/${i}; mkdir -p ~/ftp/${remotedirs}; cd ~/ftp/${remotedirs}; ${ibibliounzip} -o ${TMPLOC}/${i}; rm -f ${TMPLOC}/${i}; /usr/bin/chgrp -R pg ~/ftp/${destdirs}; ~/.bin/fixperms.sh ~/ftp/${remotedirs}${bn}" >> $OUTFILE 2>&1
+				if [ $j = gbnewby@"$IBIBLIOHOST" ] ; then
+					${SSH} $j "touch $IBIBLIO_TRIGGER_DIR/$i.trig"
+					# Move to JSON metadata staging directory:
+					# If there was no .json, then create xxxxx.txt with the username of the WWer:
+					${SSH} $j "if [ -f ~/ftp/${jsonroot}.json ]; then /bin/cp ~/ftp/${jsonroot}.json ${IBIBLIO_JSON_DIR}/; /bin/rm -f ~/ftp/${jsonroot}.json; else /usr/bin/echo ${ME} > ${IBIBLIO_JSON_DIR}/`/usr/bin/basename ${jsonroot}`.txt; fi"
 				else
-					# ibiblio needs chgrp as well as chmod
-					# we'll run fixperm.sh (recursive chmod) rather than separate commands:
-					bn=`echo $i | /usr/bin/sed 's/\.zip//'`
-					${SSH} ${j} "chmod 700 ${TMPLOC}/${i}; mkdir -p ~/ftp/${remotedirs}; cd ~/ftp/${remotedirs}; ${ibibliounzip} -o ${TMPLOC}/${i}; rm -f ${TMPLOC}/${i}; /usr/bin/chgrp -R pg ~/ftp/${destdirs}; ~/.bin/fixperms.sh ~/ftp/${remotedirs}${bn}" >> $OUTFILE 2>&1
-					if [ $j = gbnewby@"$IBIBLIOHOST" ] ; then
-						${SSH} $j "touch $IBIBLIO_TRIGGER_DIR/$i.trig"
-						# Move to JSON metadata staging directory:
-						# If there was no .json, then create xxxxx.txt with the username of the WWer:
-						${SSH} $j "if [ -f ~/ftp/${jsonroot}.json ]; then /bin/cp ~/ftp/${jsonroot}.json ${IBIBLIO_JSON_DIR}/; /bin/rm -f ~/ftp/${jsonroot}.json; else /usr/bin/echo ${ME} > ${IBIBLIO_JSON_DIR}/`/usr/bin/basename ${jsonroot}`.txt; fi"
-					else
-						# Remove the JSON metadata from the other hosts:
-						${SSH} $j "if [ -f ~/ftp/${jsonroot}.json ]; then /bin/rm ~/ftp/${jsonroot}.json; fi"
-					fi
-					echo "Success!" >> $OUTFILE; echo "" >> $OUTFILE
-				fi      # $? != 0
-	    done        # for j in ${TOHOSTS}; do
-	    if [ $BOMBED = 'no' ] ; then
-				PD=`/bin/date --iso-8601`
-				# Rename any older existing files:
-				if [ -f ${DONE}/${i} ] ; then
-		      mv -f --backup ${DONE}/${i} ${DONE}/${i}.${PD}
-	      fi
-        mv -f ${i} ${DONE}/
-	    fi                  # $? -ne 0 ] then; else;
+					# Remove the JSON metadata from the other hosts:
+					${SSH} $j "if [ -f ~/ftp/${jsonroot}.json ]; then /bin/rm ~/ftp/${jsonroot}.json; fi"
+				fi
+				echo "Success!" >> $OUTFILE; echo "" >> $OUTFILE
+			fi      # $? != 0
+		done        # for j in ${TOHOSTS}; do
+		if [ $BOMBED = 'no' ] ; then
+			PD=`/bin/date --iso-8601`
+			# Rename any older existing files:
+			if [ -f ${DONE}/${i} ] ; then
+				mv -f --backup ${DONE}/${i} ${DONE}/${i}.${PD}
+			fi
+			mv -f ${i} ${DONE}/
 		fi
 
 		# Any files sent?  Send output:
@@ -168,6 +172,6 @@ if [ `/bin/ls -l | grep -c zip` != 0 ] ; then
   done # for i in *.zip ; do
 fi  # End of .zip files
 
-# Bye...
+# clear lock..
 rm -f ${PULLRUNNING}
 exit
