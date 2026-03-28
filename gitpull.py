@@ -14,8 +14,41 @@ import logging
 from pathlib import Path
 import shutil
 
-VERSION = "2026.03.16"
+VERSION = "2026.03.26"
+
+def load_env_file(filepath=".env"):
+    """
+    Reads an .env file and sets environment variables.
+    Expected format:    THEKEY=the_value
+    Assumes .env file is located in the directory where this script is.
+    """
+    directory = os.path.dirname(os.path.abspath(__file__))
+    filepath = os.path.join(directory, filepath)
+
+    if not os.path.exists(filepath):
+        # User could set them manually...
+        #print(f"Warning: {filepath} file not found. Environment variables must be set manually.")
+        return
+
+    with open(filepath, "r") as file:
+        for line in file:
+            line = line.strip()
+            # Skip empty lines, comments, invalid lines
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            # Strip blanks & quotes
+            value = value.strip().strip('\'\"')
+            os.environ[key] = value
+            # print(f"Loaded environment variable: {key}={value}")
+
+
+# Load the variables from the.env file
+load_env_file()
+
 UPSTREAM_REPO_DIR = os.getenv('UPSTREAM_REPO_DIR') or ''
+#print(f"Using UPSTREAM_REPO_DIR: {UPSTREAM_REPO_DIR}")
 
 # Configure logging
 logging.basicConfig(filename='gitpull.log', level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -185,7 +218,7 @@ def remove_git_history(target_path):
     """
     Remove Git history from the target path.
     Deletes the .git directory and common Git-related files like .gitignore, .gitattributes,
-      README.md, and LICENSE.txt if they exist.
+      if they exist.
     It might be cleaner to use "git archive" to export only the files without Git history,
       but our server does not support the protocol. Would also need to remove untracked files.
       Any existing unchanged files should not be updated.
@@ -196,7 +229,7 @@ def remove_git_history(target_path):
         logger.info("Git history removed successfully")
     else:
         logger.info("No Git history found to remove")
-    files_to_remove = [".gitignore", ".gitattributes", "README.md", "LICENSE.txt"]
+    files_to_remove = [".gitignore", ".gitattributes"]
     for filename in files_to_remove:
         file_path = Path(target_path) / filename
         if file_path.exists():
@@ -212,22 +245,17 @@ def main():
         epilog="Example: %(prog)s 12345 /path/to/target"
     )
     parser.add_argument(
-        "--version",
-        action="store_true",
-        help="Show version information"
-    )
-    parser.add_argument(
         "ebook_number",
-        help="Number of the eBook Git repository to clone/pull from"
+        help="Number of the eBook Git repository to pull from"
     )
     parser.add_argument(
         "target_path",
         help="Path to the target folder to update"
     )
     parser.add_argument(
-        "-v", "--verbose",
-        action="store_true",
-        help="Enable verbose output"
+        "-v", "--version",
+         action="version",
+        version=f"%(prog)s version {VERSION}"
     )
     parser.add_argument(
         "--norepo",
@@ -242,16 +270,19 @@ def main():
 
     args = parser.parse_args()
 
-    if args.version:
-        print(f"gitpull version {VERSION}")
-        sys.exit(0)
-    # Set logging level based on verbosity
-    if args.verbose:
-        logger.setLevel(logging.DEBUG)
-
     if not UPSTREAM_REPO_DIR:
         logger.error("UPSTREAM_REPO_DIR environment variable is not set")
         print("Failed: UPSTREAM_REPO_DIR environment variable is not set.")
+        sys.exit(1)
+
+    # Get the source repository
+    origin = f"{UPSTREAM_REPO_DIR}/{args.ebook_number}.git"
+    # Check if the source repository exists by trying to get its remote URL
+    try:
+        run_command(["git", "ls-remote", origin], noerror=True)
+    except subprocess.CalledProcessError:
+        logger.error(f"Source repository {origin} does not exist or is not accessible")
+        print(f"Failed: source repository {origin} does not exist or is not accessible.")
         sys.exit(1)
 
     # Check if target exists and is a directory
@@ -271,14 +302,16 @@ def main():
             print(f"Failed: {args.target_path} does not exist or is not a directory")
             sys.exit(1)
 
-    # Update the directory
-    origin = f"{UPSTREAM_REPO_DIR}/{args.ebook_number}.git/"
-
-    # destination is a directory named with the ebook number under the target path
-    destination = f"{args.target_path}/{args.ebook_number}"
+    # Destination is a directory named with the ebook number under the target path
+    destination = Path(args.target_path).expanduser().resolve() / str(args.ebook_number)
     logger.info(f"Pulling from {origin} to {destination}")
 
-    success = update_folder(origin, destination)
+    try:
+        success = update_folder(origin, destination)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Unexpected git operation failure: {e}")
+        success = False
+
     # Remove Git history if not needed, but only if the update was successful to avoid
     # deleting existing files on failure
     if args.norepo and success:

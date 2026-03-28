@@ -11,40 +11,54 @@ import subprocess
 import logging
 import sys
 
+VERSION = "2026.03.26"
+
+def load_env_file(filepath=".env"):
+    """
+    Reads an .env file and sets environment variables.
+    Expected format:    THEKEY=the_value
+    Assumes .env file is located in the directory where this script is.
+    """
+    directory = os.path.dirname(os.path.abspath(__file__))
+    filepath = os.path.join(directory, filepath)
+
+    if not os.path.exists(filepath):
+        # User could set them manually...
+        #print(f"Warning: {filepath} file not found. Environment variables must be set manually.")
+        return
+
+    with open(filepath, "r") as file:
+        for line in file:
+            line = line.strip()
+            # Skip empty lines, comments, invalid lines
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            # Strip blanks & quotes
+            value = value.strip().strip('\'\"')
+            os.environ[key] = value
+            #print(f"Loaded environment variable: {key}={value}")
+
+
+# Load the variables from the.env file
+load_env_file()
+
+PRIVATE = os.getenv('PRIVATE') or ''
+# These are the locations for the gitpull script on the hosts
+IBIBLIO_BIN = os.getenv('IBIBLIO_BIN') or ''
+MIRROR_BIN = os.getenv('MIRROR_BIN') or ''
+# This is the destination directory for the eBooks on the hosts, typically something like '~/ftp/'
+EBOOKS_DIR = os.getenv('EBOOKS_DIR') or ''
+
 # Configure logging
 logging.basicConfig(filename='updatehosts.log', level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
-
-PRIVATE = os.getenv('PRIVATE') or ''
-# These are where .zip.trig files go on ibiblio :
-DOPULL_LOG_DIR = os.path.join(PRIVATE, 'logs', 'dopull')
-IBIBLIO_BIN = os.getenv('IBIBLIO_BIN') or ''
-MIRROR_BIN = os.getenv('MIRROR_BIN') or ''
 
 ibiblio = "gutenberg.login.ibiblio.org"
 mirrors = ["inferno.pglaf.org",
            "aleph.pglaf.org",
            "readingroo.ms"]
-
-def load_env_file(env_file='.env'):
-    """
-    Load environment variables from a .env file.
-    Assumes the file is in the current directory and contains key=value pairs.
-    Skips lines starting with # (comments) and empty lines.
-    """
-    if not os.path.exists(env_file):
-        logger.warning(f".env file not found: {env_file}")
-        return False
-    with open(env_file, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#'):
-                continue
-            if '=' in line:
-                key, value = line.split('=', 1)
-                os.environ[key.strip()] = value.strip()
-                logger.info(f"Loaded env var: {key.strip()}")
-    return True
 
 def run_python_script_via_ssh(host, script_path, script_args=None, timeout=60):
     """Run a Python script on a remote server via SSH."""
@@ -60,6 +74,7 @@ def run_python_script_via_ssh(host, script_path, script_args=None, timeout=60):
     except Exception as e:
         logger.error(f"[ERROR] Failed to run Python script on {host}: {str(e)}")
         raise
+
 
 def run_ssh_command(host, command, arguments=None, timeout=60):
     """Run a shell command on a remote host via SSH with optional arguments."""
@@ -92,6 +107,7 @@ def run_ssh_command(host, command, arguments=None, timeout=60):
         logger.error(f"[ERROR] Unexpected error while running command on {host}: {str(e)}")
         raise
 
+
 def get_ebook_path(number):
     """Get PG directory path: 12345 --> 1/2/3/4/"""
     outdir = '/'.join(number) + '/'
@@ -105,38 +121,58 @@ def get_ebook_path(number):
             outdir = outdir[:where - 1]  # It's always 1 digit
     return outdir
 
+
 def update_gitpull_to_hosts():
     """
     Update the gitpull script on all hosts.
     Assumes the source script is named 'gitpull.py' and is located in the current directory.
     """
+    if not os.path.exists('gitpull.py'):
+        logger.error("gitpull.py script not found in the current directory.")
+        print("gitpull.py script not found in the current directory.")
+        return False
+    if not IBIBLIO_BIN or not MIRROR_BIN:
+        logger.error("IBIBLIO_BIN or MIRROR_BIN environment variable not set.")
+        print("IBIBLIO_BIN or MIRROR_BIN environment variable not set.")
+        return False
     for host in mirrors + [ibiblio]:
         logger.info(f"Updating gitpull.py script on {host}...")
-        if not os.path.exists('gitpull.py'):
-            print("gitpull.py script not found in the current directory.")
-            return 1
-        if not IBIBLIO_BIN or not MIRROR_BIN:
-            print("IBIBLIO_BIN or MIRROR_BIN environment variable not set.")
-            return 1
+        remote_target = IBIBLIO_BIN if host == ibiblio else MIRROR_BIN
         try:
-            if host == ibiblio:
-                result = run_ssh_command(host, "scp", ["gitpull.py", f"{host}:{IBIBLIO_BIN}"])
-            else:
-                result = run_ssh_command(host, "scp", ["gitpull.py", f"{host}:{MIRROR_BIN}"])
+            result = subprocess.run(
+                ["scp", "gitpull.py", f"{host}:{remote_target}"],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=60,
+            )
+            logger.info(f"[SUCCESS] scp output for {host}: {result.stdout}")
+            if result.stderr:
+                logger.warning(f"[WARNING] scp stderr for {host}: {result.stderr}")
             print(f"Successfully updated gitpull script on {host}")
+        except subprocess.TimeoutExpired:
+            msg = f"Timed out updating gitpull script on {host}"
+            logger.error(msg)
+            print(msg)
+            return False
+        except subprocess.CalledProcessError as e:
+            msg = f"Failed to update gitpull script on {host}: {e.stderr.strip()}"
+            logger.error(msg)
+            print(msg)
+            return False
         except Exception as e:
-            result = f"Failed to update gitpull script on {host}: {str(e)}"
-            logger.error(result)
-            return 1
+            msg = f"Failed to update gitpull script on {host}: {str(e)}"
+            logger.error(msg)
+            print(msg)
+            return False
 
-        print(f"Finished updating gitpull.py on {host}, result = {result}\n")
-        return 0
+        print(f"Finished updating gitpull.py on {host}\n")
+    return True
+
 
 def main():
     """Main entry point for the script."""
-    if not load_env_file():  # Load .env variables at the start
-        print("Failed to load environment variables.")
-        sys.exit(1)
     parser = argparse.ArgumentParser(
         description="Update an eBook directory on the mirrors with the latest files from the Git repository",
         epilog="Example: %(prog)s 12345"
@@ -145,25 +181,53 @@ def main():
         "ebook_number",
         help="Number of the eBook Git repository to pull from"
     )
+    parser.add_argument(
+        "-v", "--version",
+        action="version",
+        version=f"%(prog)s version {VERSION}"
+    )
+    # Does not need "ebook_number" argument, but have not found an easy way to make it
+    # optional only in this case
+    parser.add_argument(
+        "--update-gitpull",
+        action="store_true",
+        help="Update the gitpull script on all hosts"
+    )
     args = parser.parse_args()
+
+    if args.update_gitpull:
+        if not update_gitpull_to_hosts():
+            print("Failed to update gitpull script on all hosts.")
+            sys.exit(1)
+        print("Successfully updated gitpull script on all hosts.")
+        sys.exit(0)
+
+    if not MIRROR_BIN or not PRIVATE or not EBOOKS_DIR:
+        logger.error("One or more required environment variables are not set.")
+        print("One or more required environment variables are not set.")
+        sys.exit(1)
+
+    # This is where .zip.trig files go on ibiblio :
+    DOPULL_LOG_DIR = os.path.join(PRIVATE, 'logs', 'dopull')
 
     # Get the destination path for the eBook number
     destination = get_ebook_path(args.ebook_number)
     print(f"{args.ebook_number} goes to {destination}\n")
-    destination = "~/ftp/" + destination
+    destination = os.path.join(EBOOKS_DIR, destination)
     for host in mirrors:
         print("Copying to " + host + "...")
         # Call gitpull.py on the host, creating the target directory if it doesn't exist, no history
-        sargs = ["--norepo", "--createdir", f"{args.ebook_number}", f"{destination}"]
+        sargs = ["--norepo", "--createdirs", f"{args.ebook_number}", f"{destination}"]
         run_python_script_via_ssh(host, f"{MIRROR_BIN}/gitpull.py", sargs)
         print("Success!\n")
 
     # ibiblio is a special case, it needs to trigger other actions after the pull,
     # so we just trigger the pull there and let it do the rest
     print(f"Trigger processing of #{args.ebook_number} on ibiblio...")
-    run_ssh_command(ibiblio, "touch", [f"{DOPULL_LOG_DIR}{args.ebook_number}.zip.trig"])
+    run_ssh_command(ibiblio, "touch", [f"{DOPULL_LOG_DIR}/{args.ebook_number}.zip.trig"])
     print("Success!\n")
     sys.exit(0)
+
 
 if __name__ == "__main__":
     main()
