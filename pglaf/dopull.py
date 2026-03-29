@@ -3,6 +3,7 @@
 
 import atexit
 import datetime as dt
+import logging
 import os
 from pathlib import Path
 import shutil
@@ -15,6 +16,7 @@ try:
 except ImportError:
     pwd = None
 
+VERSION = "2026.03.29"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -23,16 +25,35 @@ PUSHDIR = Path(os.getenv("PUSHDIR", "/home/push"))
 # Where to move files after uploading them.
 DONE = Path(os.getenv("DONE", "/home/DONE"))
 # Output file.
-OUTFILE = Path(os.getenv("OUTFILE", str((SCRIPT_DIR / "tmp" / str(os.getpid())).resolve())))
+OUTFILE = Path(os.getenv("OUTFILE", str(Path("/tmp") / str(os.getpid()))))
 # Last run log.
-LASTRUNFILE = Path(os.getenv("LASTRUNFILE", str(SCRIPT_DIR / "dopull-lastrun")))
+LASTRUNFILE = Path(os.getenv("LASTRUNFILE", "/home/gbnewby/logs/dopull-lastrun"))
 # Lock file to prevent multiple dopulls running at the same time.
+LOGFILE = Path(os.getenv("LOGFILE", "/home/gbnewby/logs/dopull-log.txt"))
 PULLRUNNING = Path(os.getenv("PULLRUNNING", str(SCRIPT_DIR / ".dopull-running")))
 # Trigger directory for JSON processing on ibiblio (kept for compatibility with shell config).
 IBIBLIO = "gutenberg.login.ibiblio.org"
 IBIBLIO_JSON_DIR = Path(os.getenv("IBIBLIO_JSON_DIR", "/public/vhost/g/gutenberg/private/logs/json"))
 # Email address to send trouble reports to.
 BOSS = os.getenv("BOSS", "pterodactyl@fastmail.com")
+LOGGER = logging.getLogger("dopull")
+
+
+def setup_logging() -> None:
+    """Configure logging output to LOGFILE, with stderr fallback."""
+    LOGGER.setLevel(logging.INFO)
+    LOGGER.handlers.clear()
+    LOGGER.propagate = False
+
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    try:
+        LOGFILE.parent.mkdir(parents=True, exist_ok=True)
+        handler = logging.FileHandler(LOGFILE, encoding="utf-8")
+    except Exception:
+        handler = logging.StreamHandler(sys.stderr)
+
+    handler.setFormatter(formatter)
+    LOGGER.addHandler(handler)
 
 
 def get_file_owner(path: Path) -> str:
@@ -51,9 +72,10 @@ def get_file_owner(path: Path) -> str:
 
 def append_out(message: str) -> None:
     """Append a line to the output file, creating parent folders as needed."""
-    OUTFILE.parent.mkdir(parents=True, exist_ok=True)
     with OUTFILE.open("a", encoding="utf-8") as fh:
         fh.write(f"{message}\n")
+    if LOGGER.handlers:
+        LOGGER.info(message)
 
 
 def cleanup(*_args: object) -> None:
@@ -62,6 +84,8 @@ def cleanup(*_args: object) -> None:
         PULLRUNNING.unlink(missing_ok=True)
     except Exception:
         pass
+    if LOGGER.handlers:
+        LOGGER.info("Cleanup complete, lock removed")
 
 
 def acquire_lock() -> None:
@@ -80,10 +104,10 @@ def acquire_lock() -> None:
 def run_updatehosts(book_number: str) -> int:
     """Run updatehosts.py for a single eBook and append output to OUTFILE."""
     cmd = [sys.executable, str(SCRIPT_DIR / "updatehosts.py"), book_number]
-    print(f"Running command: {' '.join(cmd)}")
+    #print(f"Running command: {' '.join(cmd)}")
 
     with OUTFILE.open("a", encoding="utf-8") as fh:
-        fh.write(" ".join(cmd) + "\n")
+        #fh.write(" ".join(cmd) + "\n")
         proc = subprocess.run(
             cmd,
             cwd=str(SCRIPT_DIR),
@@ -104,6 +128,8 @@ def main() -> int:
     """
 
     # Mark the start of this run and acquire lock.
+    setup_logging()
+    LOGGER.info("Starting dopull version %s", VERSION)
     LASTRUNFILE.write_text(f"{dt.datetime.now().isoformat()}\n", encoding="utf-8")
     acquire_lock()
 
@@ -142,27 +168,26 @@ def main() -> int:
             bombed = True
             continue
 
-        append_out("Success!")
-        append_out("")
+        append_out("Success updating mirrors!")
 
-        # If it's a .json file, also copy it to the ibiblio JSON dir to trigger ebook indexing.
-        if trigger_file.suffix.lower() == ".json":
-            try:
-                dest = f"{IBIBLIO}:{IBIBLIO_JSON_DIR}/{filename}"
-                subprocess.run(
-                    ["scp", str(trigger_file), dest],
-                    check=True,
-                )
-                append_out(f"Copied {filename} to {dest} to trigger ebook indexing.")
-            except Exception as e:
-                append_out(f"Failed to copy {filename} to {IBIBLIO_JSON_DIR}: {e}")
-                bombed = True
-                continue
+        if not bombed:
+            # If it's a .json file, also copy it to the ibiblio JSON dir to trigger ebook indexing.
+            if not bombed and trigger_file.suffix.lower() == ".json":
+                try:
+                    dest = f"{IBIBLIO}:{IBIBLIO_JSON_DIR}/{filename}"
+                    subprocess.run(
+                        ["scp", str(trigger_file), dest],
+                        check=True,
+                    )
+                    append_out(f"Copied {filename} to ibiblio to trigger ebook indexing.")
+                except Exception as e:
+                    append_out(f"Failed to copy {filename} to {IBIBLIO_JSON_DIR}: {e}")
+                    bombed = True
+                    continue
 
-        # Move the trigger file to the DONE directory.
-        print(f"Moving {filename} to DONE directory")
-        #os.chmod(trigger_file, 0o644)  # Ensure we have permission to move the file.
-        shutil.move(str(trigger_file), str(DONE / filename))
+            # Move the trigger file to the DONE directory.
+            append_out(f"Moving {filename} to DONE directory")
+            shutil.move(str(trigger_file), str(DONE / filename))
 
         # Send email to user notifying of success/failure.
         try:
@@ -174,9 +199,11 @@ def main() -> int:
                 text=True,
                 check=False,
             )
+            OUTFILE.unlink(missing_ok=True)
         except Exception as e:
             append_out(f"Failed to send email to {user}: {e}")
 
+    append_out("")
     return 1 if bombed else 0
 
 
