@@ -16,7 +16,7 @@ try:
 except ImportError:
     pwd = None
 
-VERSION = "2026.03.29"
+VERSION = "2026.03.30"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -139,7 +139,7 @@ def main() -> int:
     # Find trigger files, both .txt and .json.
     trig_files = sorted(PUSHDIR.glob("*.txt")) + sorted(PUSHDIR.glob("*.json"))
     if not trig_files:
-        append_out("No trigger files found, exiting.")
+        append_out("No files found, exiting.")
         return 0
 
     bombed = False
@@ -168,7 +168,7 @@ def main() -> int:
             bombed = True
             continue
 
-        append_out("Success updating mirrors!")
+        append_out("Success updating mirrors!\n")
 
         if not bombed:
             # If it's a .json file, also copy it to the ibiblio JSON dir to trigger ebook indexing.
@@ -189,12 +189,14 @@ def main() -> int:
             append_out(f"Moving {filename} to DONE directory")
             shutil.move(str(trigger_file), str(DONE / filename))
 
+        result = "success" if not bombed else "failure"
+        subject = f"{filename} processed {result}"
         # Send email to user notifying of success/failure.
         try:
             with OUTFILE.open("r", encoding="utf-8") as fh:
                 log_content = fh.read()
             subprocess.run(
-                ["mail", "-s", "dopull results", user],
+                ["mail", "-s", subject, user],
                 input=log_content,
                 text=True,
                 check=False,
