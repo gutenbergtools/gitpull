@@ -11,13 +11,16 @@ import shutil
 import signal
 import subprocess
 import sys
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 try:
     import pwd
 except ImportError:
     pwd = None
 
-VERSION = "2026.03.31"
+VERSION = "2026.04.02"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -105,21 +108,40 @@ def acquire_lock() -> None:
 def run_updatehosts(book_number: str) -> int:
     """Run updatehosts.py for a single eBook and append output to OUTFILE."""
     cmd = [sys.executable, str(SCRIPT_DIR / "updatehosts.py"), book_number]
-    #print(f"Running command: {' '.join(cmd)}")
+    LOGGER.info(f"Running command: {' '.join(cmd)}")
 
-    with OUTFILE.open("a", encoding="utf-8") as fh:
-        #fh.write(" ".join(cmd) + "\n")
-        proc = subprocess.run(
-            cmd,
-            cwd=str(SCRIPT_DIR),
-            stdout=fh,
-            stderr=subprocess.STDOUT,
-            check=False,
-        )
-    return proc.returncode
+    try:
+        with OUTFILE.open("a", encoding="utf-8") as fh:
+            proc = subprocess.run(
+                cmd,
+                cwd=str(SCRIPT_DIR),
+                stdout=fh,
+                stderr=subprocess.STDOUT,
+                check=True,
+            )
+        return proc.returncode
+    except subprocess.CalledProcessError as e:
+        LOGGER.error(f"Command failed with return code {e.returncode}: {e}")
+        return e.returncode
+
+def send_email(subject: str, recipient: str, body: str) -> None:
+    """Send an email using smtplib."""
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = 'gbnewby@pglaf.org'
+        msg['To'] = recipient
+        msg['Subject'] = subject
+
+        msg.attach(MIMEText(body, 'plain'))
+
+        with smtplib.SMTP('localhost') as server:  # Replace 'localhost' with your SMTP server
+            server.send_message(msg)
+        LOGGER.info(f"Email sent to {recipient} with subject: {subject}")
+    except Exception as e:
+        LOGGER.error(f"Failed to send email to {recipient}: {e}")
 
 def main() -> int:
-    """
+    """ Main function to process trigger files and update hosts.
     • For each trigger file found in "push" directory,
         ◦ Get owner of file (user)
         ◦ Call updatehosts.py to create/update book on hosts, and trigger ibiblio update.
@@ -172,8 +194,7 @@ def main() -> int:
         append_out("Success updating mirrors!\n")
 
         if not bombed:
-            # If it's a .json file, also copy it to the ibiblio JSON dir to trigger ebook indexing.
-            if not bombed and trigger_file.suffix.lower() == ".json":
+            if trigger_file.suffix.lower() == ".json":
                 try:
                     dest = f"{IBIBLIO}:{IBIBLIO_JSON_DIR}/{filename}"
                     subprocess.run(
@@ -196,12 +217,7 @@ def main() -> int:
         try:
             with OUTFILE.open("r", encoding="utf-8") as fh:
                 log_content = fh.read()
-            subprocess.run(
-                ["mail", "-s", subject, user],
-                input=log_content,
-                text=True,
-                check=False,
-            )
+            send_email(subject, user, log_content)
             OUTFILE.unlink(missing_ok=True)
         except Exception as e:
             append_out(f"Failed to send email to {user}: {e}")
