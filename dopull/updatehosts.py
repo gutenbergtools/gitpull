@@ -1,48 +1,15 @@
 #!/usr/bin/env python3
 """
-from gutenbergtools/pglaf-gitpull: Update a folder with the latest files from a Git repository
-
-This tool clones or pulls the latest changes from a Git repository into a
-specified target folder.
+Update an eBook directory on the mirrors with the latest files from the Git repository
 """
 import argparse
 import os
 import subprocess
 import logging
 import sys
+from pathlib import Path
 
-VERSION = "2026.03.26"
-
-def load_env_file(filepath=".env"):
-    """
-    Reads an .env file and sets environment variables.
-    Expected format:    THEKEY=the_value
-    Assumes .env file is located in the directory where this script is.
-    """
-    directory = os.path.dirname(os.path.abspath(__file__))
-    filepath = os.path.join(directory, filepath)
-
-    if not os.path.exists(filepath):
-        # User could set them manually...
-        #print(f"Warning: {filepath} file not found. Environment variables must be set manually.")
-        return
-
-    with open(filepath, "r") as file:
-        for line in file:
-            line = line.strip()
-            # Skip empty lines, comments, invalid lines
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            key = key.strip()
-            # Strip blanks & quotes
-            value = value.strip().strip('\'\"')
-            os.environ[key] = value
-            #print(f"Loaded environment variable: {key}={value}")
-
-
-# Load the variables from the.env file
-load_env_file()
+VERSION = "2026.03.31"
 
 PRIVATE = os.getenv('PRIVATE') or ''
 # These are the locations for the gitpull script on the hosts
@@ -50,9 +17,10 @@ IBIBLIO_BIN = os.getenv('IBIBLIO_BIN') or ''
 MIRROR_BIN = os.getenv('MIRROR_BIN') or ''
 # This is the destination directory for the eBooks on the hosts, typically something like '~/ftp/'
 EBOOKS_DIR = os.getenv('EBOOKS_DIR') or ''
+LOGFILE = Path(os.getenv("LOGFILE", "/home/htdocs/dopull/logs/updatehosts.log"))
 
 # Configure logging
-logging.basicConfig(filename='updatehosts.log', level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(filename=str(LOGFILE), level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 ibiblio = "gutenberg.login.ibiblio.org"
@@ -68,7 +36,7 @@ def run_python_script_via_ssh(host, script_path, script_args=None, timeout=60):
     remote_command = f"python3 {script_path}"
     try:
         logger.info(f"[START] Running Python script on {host}: {remote_command} {' '.join(script_args)}")
-        output = run_ssh_command(host, remote_command, arguments=script_args, timeout=timeout)
+        output = run_ssh_command(host, remote_command, arguments=script_args, timeout=600)
         logger.info(f"[SUCCESS] Output from {host}: {output}")
         return output
     except Exception as e:

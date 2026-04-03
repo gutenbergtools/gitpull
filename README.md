@@ -5,6 +5,7 @@
 [updatehosts.py](#updatehosts)
 [puller.py](#puller)
 [gitpull.py](#dopull)
+[Questions](#questions)
 
 ---
 ## dopull.sh {#dopull}
@@ -143,6 +144,16 @@ or
 
 #### The eBook folder will now contain the current source files (only).
 - Unless `--norepo` was specified. it will also contain the Git history.
+
+---
+## Questions {#questions}
+
+- The JSON file is copied directly by dopull.py to ibiblio for cron-dopush prcessing. Would it be better to do it in puller.py, maybe using it as the trigger?
+  - In other words, for the JSON file, two triggers are currently created on ibiblio, in different steps.
+
+- dopush also does GUTINDEX processing, what do we do with it?
+
+- Each extract to a mirror may take several minutes, timeout = 10 min. Would it be better to have a "puller" script on each mirror?
 
 ---
 ## Requirements
