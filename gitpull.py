@@ -14,7 +14,7 @@ import logging
 from pathlib import Path
 import shutil
 
-VERSION = "2026.03.26"
+VERSION = "2026.04.16"
 
 def load_env_file(filepath=".env"):
     """
@@ -98,7 +98,7 @@ def clone_repo(repo_url, target_path):
 def pull_repo(repo_path):
     """Pull latest changes in an existing Git repository."""
     logger.info(f"Pulling latest changes in {repo_path}...")
-    run_command(["git", "pull"], cwd=repo_path)
+    run_command(["git", "pull", "--rebase"], cwd=repo_path)
     run_command(["git", "clean", "-fdx"], cwd=repo_path)
     run_command(["git", "restore", "."], cwd=repo_path)
     logger.info(f"Repository updated successfully")
