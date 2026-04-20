@@ -151,33 +151,16 @@ A simple Python utility that helps you keep a local folder synchronized with an 
   - Creates a trigger file on ibiblio for puller.py processing.
 - Hourly, puller.sh calls puller.py to process trigger files.
 - [puller.py](#puller):
-  - Executes gitpull.py locally on ibiblio to update the eBook file structure.
+  - Executes [gitpull.py](#dopull) locally on ibiblio to update the eBook file structure.
   - Copies trigger file to dopush to trigger catalog update.
 - Hourly, cron-dopush.sh performs catalog updates and runs ebookconverter.
 
----
-### Server locations {#locations}
-
-Trigger files from Workflow and Errata Workbench:
-- pglaf:/home/push
-
-dopull.sh, dopull.py, updatehosts.py:
-- pglaf:/home/htdocs/dopull
-
-Trigger files for puller.py:
-- gutenberg.login.ibiblio.org:/public/vhost/g/gutenberg/private/logs/dopull
-
-puller.sh, puller.py, cron-dopush.sh:
-- gutenberg.login.ibiblio.org:/export/sunsite/users/gutenbackend/ebookconverter
-
-Trigger files for cron-dopush.sh:
-- gutenberg.login.ibiblio.org:/public/vhost/g/gutenberg/private/logs/dopush
 
 ---
 ## Questions {#questions}
 
-- The JSON file is copied directly by dopull.py to ibiblio for cron-dopush prcessing. Would it be better to do it in puller.py, maybe using it as the trigger?
-  - In other words, for the JSON file, two triggers are currently created on ibiblio, in different steps.
+- The JSON file is copied directly by dopull.py to ibiblio for cron-dopush processing. Would it be better to do it in puller.py, maybe using it as the trigger?
+  - In other words, for the JSON file, dopull.py calls updatehosts.py, which creates an empty trigger file for puller.py, then dopull.py copies the JSON file to ibiblio, to trigger cataloging. Two scripts creating two trigger files. It would be simpler to just use the JSON file.
 
 - Each extract to a mirror may take several minutes, timeout = 10 min. Would it be better to have a "puller" script on each mirror?
 
