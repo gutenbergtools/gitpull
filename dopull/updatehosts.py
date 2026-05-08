@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 
 VERSION = "2026.03.31"
+# 10 minutes not enough for a 670 MB file
+TIMEOUT = 900
 
 PRIVATE = os.getenv('PRIVATE') or ''
 # These are the locations for the gitpull script on the hosts
@@ -36,7 +38,7 @@ def run_python_script_via_ssh(host, script_path, script_args=None, timeout=60):
     remote_command = f"python3 {script_path}"
     try:
         logger.info(f"[START] Running Python script on {host}: {remote_command} {' '.join(script_args)}")
-        output = run_ssh_command(host, remote_command, arguments=script_args, timeout=600)
+        output = run_ssh_command(host, remote_command, arguments=script_args, timeout=TIMEOUT)
         logger.info(f"[SUCCESS] Output from {host}: {output}")
         return output
     except Exception as e:
