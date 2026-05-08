@@ -153,7 +153,10 @@ A simple Python utility that helps you keep a local folder synchronized with an 
 - [puller.py](#puller):
   - Executes [gitpull.py](#dopull) locally on ibiblio to update the eBook file structure.
   - Copies trigger file to dopush to trigger catalog update.
-- Hourly, cron-dopush.sh performs catalog updates and runs ebookconverter.
+- Hourly, cron-dopush.sh processes eBook additions/changes.
+  - Runs fileinfo to get the book metadata.
+  - Runs ebookconverter to build the file formats.
+  - Runs autorebuild to update the database.
 
 
 ---

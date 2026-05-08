@@ -20,7 +20,7 @@ try:
 except ImportError:
     pwd = None
 
-VERSION = "2026.04.02"
+VERSION = "2026.05.08"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -165,8 +165,8 @@ def main() -> int:
         append_out("No files found, exiting.")
         return 0
 
-    bombed = False
     for trigger_file in trig_files:
+        bombed = False
         filename = trigger_file.name
         append_out(f"Processing file: {filename}")
 
@@ -223,7 +223,7 @@ def main() -> int:
             append_out(f"Failed to send email to {user}: {e}")
 
     append_out("")
-    return 1 if bombed else 0
+    return 0
 
 
 if __name__ == "__main__":
