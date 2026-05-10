@@ -14,13 +14,14 @@ import sys
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from updatehosts import run_ssh_command
 
 try:
     import pwd
 except ImportError:
     pwd = None
 
-VERSION = "2026.05.08"
+VERSION = "2026.05.10"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -41,6 +42,7 @@ IBIBLIO_JSON_DIR = Path(os.getenv("IBIBLIO_JSON_DIR", "/public/vhost/g/gutenberg
 # Email address to send trouble reports to.
 BOSS = os.getenv("BOSS", "pterodactyl@fastmail.com")
 LOGGER = logging.getLogger("dopull")
+PRIVATE = os.getenv('PRIVATE') or ''
 
 
 def setup_logging() -> None:
@@ -185,6 +187,33 @@ def main() -> int:
             bombed = True
             continue
 
+        # Get the book posted on ibiblio before updating mirrors, so it gets posted even if a mirror fails.
+
+        # This is where .zip.trig files go on ibiblio:
+        DOPULL_LOG_DIR = os.path.join(PRIVATE, 'logs', 'dopull')
+
+        # ibiblio is a special case, it needs to trigger other actions after the pull,
+        # so we just trigger the pull there and let it do the rest.
+        # Do this first so the ebook gets posted, even if a mirror fails.
+        print(f"Trigger processing of #{book_number} on ibiblio...")
+        run_ssh_command(IBIBLIO, "touch", [f"{DOPULL_LOG_DIR}/{book_number}.zip.trig"])
+        print("Success!\n")
+
+        # If this is a .json file, copy it to the ibiblio JSON dir to trigger ebook indexing.
+        if trigger_file.suffix.lower() == ".json":
+            try:
+                dest = f"{IBIBLIO}:{IBIBLIO_JSON_DIR}/{filename}"
+                subprocess.run(
+                    ["scp", str(trigger_file), dest],
+                    check=True,
+                )
+                append_out(f"Copied {filename} to ibiblio to trigger ebook indexing.")
+            except Exception as e:
+                append_out(f"Failed to copy {filename} to {IBIBLIO_JSON_DIR}: {e}")
+                bombed = True
+                continue
+
+        # Now update the mirrors
         rc = run_updatehosts(book_number)
         if rc != 0:
             append_out(f"Got {rc} exit status, this file did not go!")
@@ -193,23 +222,9 @@ def main() -> int:
 
         append_out("Success updating mirrors!\n")
 
-        if not bombed:
-            if trigger_file.suffix.lower() == ".json":
-                try:
-                    dest = f"{IBIBLIO}:{IBIBLIO_JSON_DIR}/{filename}"
-                    subprocess.run(
-                        ["scp", str(trigger_file), dest],
-                        check=True,
-                    )
-                    append_out(f"Copied {filename} to ibiblio to trigger ebook indexing.")
-                except Exception as e:
-                    append_out(f"Failed to copy {filename} to {IBIBLIO_JSON_DIR}: {e}")
-                    bombed = True
-                    continue
-
-            # Move the trigger file to the DONE directory.
-            append_out(f"Moving {filename} to DONE directory")
-            shutil.move(str(trigger_file), str(DONE / filename))
+        # Move the trigger file to the DONE directory.
+        append_out(f"Moving {filename} to DONE directory")
+        shutil.move(str(trigger_file), str(DONE / filename))
 
         result = "success" if not bombed else "failure"
         subject = f"{filename} processed {result}"
