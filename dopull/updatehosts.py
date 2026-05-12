@@ -9,7 +9,7 @@ import logging
 import sys
 from pathlib import Path
 
-VERSION = "2026.05.09"
+VERSION = "2026.05.10"
 # 10 minutes not enough for a 670 MB file
 TIMEOUT = 900
 
@@ -177,16 +177,6 @@ def main():
         print("One or more required environment variables are not set.")
         sys.exit(1)
 
-    # This is where .zip.trig files go on ibiblio:
-    DOPULL_LOG_DIR = os.path.join(PRIVATE, 'logs', 'dopull')
-
-    # ibiblio is a special case, it needs to trigger other actions after the pull,
-    # so we just trigger the pull there and let it do the rest.
-    # Do this first so the ebook gets posted, even if a mirror fails.
-    print(f"Trigger processing of #{args.ebook_number} on ibiblio...")
-    run_ssh_command(ibiblio, "touch", [f"{DOPULL_LOG_DIR}/{args.ebook_number}.zip.trig"])
-    print("Success!\n")
-    
     # Get the destination path for the eBook number
     destination = get_ebook_path(args.ebook_number)
     print(f"{args.ebook_number} goes to {destination}\n")
