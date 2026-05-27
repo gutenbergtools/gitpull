@@ -21,7 +21,7 @@ try:
 except ImportError:
     pwd = None
 
-VERSION = "2026.05.10"
+VERSION = "2026.05.27"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -107,25 +107,6 @@ def acquire_lock() -> None:
     signal.signal(signal.SIGTERM, cleanup)
 
 
-def run_updatehosts(book_number: str) -> int:
-    """Run updatehosts.py for a single eBook and append output to OUTFILE."""
-    cmd = [sys.executable, str(SCRIPT_DIR / "updatehosts.py"), book_number]
-    LOGGER.info(f"Running command: {' '.join(cmd)}")
-
-    try:
-        with OUTFILE.open("a", encoding="utf-8") as fh:
-            proc = subprocess.run(
-                cmd,
-                cwd=str(SCRIPT_DIR),
-                stdout=fh,
-                stderr=subprocess.STDOUT,
-                check=True,
-            )
-        return proc.returncode
-    except subprocess.CalledProcessError as e:
-        LOGGER.error(f"Command failed with return code {e.returncode}: {e}")
-        return e.returncode
-
 def send_email(subject: str, recipient: str, body: str) -> None:
     """Send an email using smtplib."""
     try:
@@ -141,6 +122,7 @@ def send_email(subject: str, recipient: str, body: str) -> None:
         LOGGER.info(f"Email sent to {recipient} with subject: {subject}")
     except Exception as e:
         LOGGER.error(f"Failed to send email to {recipient}: {e}")
+
 
 def main() -> int:
     """ Main function to process trigger files and update hosts.
@@ -187,14 +169,11 @@ def main() -> int:
             bombed = True
             continue
 
-        # Get the book posted on ibiblio before updating mirrors, so it gets posted even if a mirror fails.
-
         # This is where .zip.trig files go on ibiblio:
         DOPULL_LOG_DIR = os.path.join(PRIVATE, 'logs', 'dopull')
 
-        # ibiblio is a special case, it needs to trigger other actions after the pull,
+        # ibiblio needs to trigger other actions after the pull,
         # so we just trigger the pull there and let it do the rest.
-        # Do this first so the ebook gets posted, even if a mirror fails.
         print(f"Trigger processing of #{book_number} on ibiblio...")
         run_ssh_command(IBIBLIO, "touch", [f"{DOPULL_LOG_DIR}/{book_number}.zip.trig"])
         print("Success!\n")
@@ -212,15 +191,6 @@ def main() -> int:
                 append_out(f"Failed to copy {filename} to {IBIBLIO_JSON_DIR}: {e}")
                 bombed = True
                 continue
-
-        # Now update the mirrors
-        rc = run_updatehosts(book_number)
-        if rc != 0:
-            append_out(f"Got {rc} exit status, this file did not go!")
-            bombed = True
-            continue
-
-        append_out("Success updating mirrors!\n")
 
         # Move the trigger file to the DONE directory.
         append_out(f"Moving {filename} to DONE directory")
