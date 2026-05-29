@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #-*- coding: utf-8 -*-
-"""Process .txt/.json trigger files and run updatehosts.py for each eBook."""
+"""Process .txt/.json trigger files for each eBook."""
 
 import atexit
 import datetime as dt
@@ -14,17 +14,14 @@ import sys
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from updatehosts import run_ssh_command
-
 try:
     import pwd
 except ImportError:
     pwd = None
 
-VERSION = "2026.05.27"
+VERSION = "2026.05.29"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-
 # Parent directory of where to look for files to push out.
 PUSHDIR = Path(os.getenv("PUSHDIR", "/home/push"))
 # Where to move files after uploading them.
@@ -32,17 +29,18 @@ DONE = Path(os.getenv("DONE", "/home/DONE"))
 # Output file.
 OUTFILE = Path(os.getenv("OUTFILE", str(Path("/tmp") / str(os.getpid()))))
 # Last run log.
-LASTRUNFILE = Path(os.getenv("LASTRUNFILE", "/home/htdocs/dopull/logs/lastrun.txt"))
-LOGFILE = Path(os.getenv("LOGFILE", "/home/htdocs/dopull/logs/dopull.log"))
+LASTRUNFILE = Path(os.getenv("LASTRUNFILE", str(SCRIPT_DIR / "logs/lastrun.txt")))
+LOGFILE = Path(os.getenv("LOGFILE", str(SCRIPT_DIR / "logs/dopull.log")))
 # Lock file to prevent multiple dopulls running at the same time.
-PULLRUNNING = Path(os.getenv("PULLRUNNING", str(SCRIPT_DIR / "/home/htdocs/dopull/.dopull-running")))
+PULLRUNNING = Path(os.getenv("PULLRUNNING", str(SCRIPT_DIR / ".dopull-running")))
 # Trigger directory for JSON processing on ibiblio (kept for compatibility with shell config).
 IBIBLIO = "gutenberg.login.ibiblio.org"
-IBIBLIO_JSON_DIR = Path(os.getenv("IBIBLIO_JSON_DIR", "/public/vhost/g/gutenberg/private/logs/json"))
+PRIVATE = os.getenv('PRIVATE') or ''
+IBIBLIO_DOPULL_DIR = os.path.join(PRIVATE, 'logs', 'dopull')
+IBIBLIO_JSON_DIR = os.path.join(PRIVATE, 'logs', 'json')
 # Email address to send trouble reports to.
 BOSS = os.getenv("BOSS", "pterodactyl@fastmail.com")
 LOGGER = logging.getLogger("dopull")
-PRIVATE = os.getenv('PRIVATE') or ''
 
 
 def setup_logging() -> None:
@@ -78,6 +76,7 @@ def get_file_owner(path: Path) -> str:
 
 def append_out(message: str) -> None:
     """Append a line to the output file, creating parent folders as needed."""
+    OUTFILE.parent.mkdir(parents=True, exist_ok=True)
     with OUTFILE.open("a", encoding="utf-8") as fh:
         fh.write(f"{message}\n")
     if LOGGER.handlers:
@@ -97,10 +96,8 @@ def cleanup(*_args: object) -> None:
 def acquire_lock() -> None:
     """Acquire singleton lock for this process."""
     if PULLRUNNING.exists():
-        # Notify that another dopull is active and exit.
         print(f"dopull postponed at {dt.datetime.now().isoformat(sep=' ', timespec='seconds')}")
         sys.exit(0)
-
     PULLRUNNING.write_text(f"{dt.datetime.now().isoformat()}\n", encoding="utf-8")
     atexit.register(cleanup)
     signal.signal(signal.SIGINT, cleanup)
@@ -111,10 +108,9 @@ def send_email(subject: str, recipient: str, body: str) -> None:
     """Send an email using smtplib."""
     try:
         msg = MIMEMultipart()
-        msg['From'] = 'gbnewby@pglaf.org'
+        msg['From'] = 'pgww@lists.pglaf.org'
         msg['To'] = recipient
         msg['Subject'] = subject
-
         msg.attach(MIMEText(body, 'plain'))
 
         with smtplib.SMTP('localhost') as server:  # Replace 'localhost' with your SMTP server
@@ -125,20 +121,89 @@ def send_email(subject: str, recipient: str, body: str) -> None:
 
 
 def main() -> int:
-    """ Main function to process trigger files and update hosts.
+    """ Main function to process trigger files.
     • For each trigger file found in "push" directory,
         ◦ Get owner of file (user)
-        ◦ Call updatehosts.py to create/update book on hosts, and trigger ibiblio update.
+        ◦ Trigger ebook update by copying it to the ibiblio dopull dir.
         ◦ If file is .json, trigger ebook indexing by copying it to the ibiblio JSON dir.
         ◦ Move file to DONE archive
         ◦ Send success/fail email to user
     """
+    # Default, process_trigger_file() will attempt to get the file owner
+    user = BOSS
+
+    def send_notification(filename: str, user: str, result: str) -> None:
+        """Send email notification to the user about the processing result."""
+        subject = f"{filename} processed {result}"
+        try:
+            with OUTFILE.open("r", encoding="utf-8") as fh:
+                log_content = fh.read()
+            send_email(subject, user, log_content)
+        except Exception as e:
+            append_out(f"Failed to send email to {user}: {e}")
+        finally:
+            # Keep notifications per-file; do not leak prior content into later runs.
+            OUTFILE.unlink(missing_ok=True)
+
+    def process_trigger_file(trigger_file: Path) -> str:
+        """Process a single trigger file and return the result status.
+        If anything fails, return failure, we will retry next time.
+        """
+        nonlocal user
+        filename = trigger_file.name
+        append_out(f"Processing file: {filename}")
+
+        # Get owner of file (user).
+        try:
+            user = get_file_owner(trigger_file)
+            append_out(f"Owner of file: {user}")
+        except Exception as e:
+            user = BOSS
+            append_out(f"Failed to get owner of file: {e}; falling back to {user}")
+
+        # Extract book number from filename.
+        book_number = trigger_file.stem
+        if not book_number.isdigit():
+            append_out(f"Skipping invalid trigger file (non-numeric book number): {filename}")
+            return "failure"
+
+        # Trigger ibiblio update by copying the trigger file to the dopull directory.
+        try:
+            if not PRIVATE:
+                append_out("PRIVATE is not set; cannot build ibiblio destination path.")
+                return "failure"
+            dest = f"{IBIBLIO}:{IBIBLIO_DOPULL_DIR}/{book_number}.zip.trig"
+            subprocess.run(["scp", str(trigger_file), dest], check=True)
+            append_out(f"Triggered processing of #{book_number} on ibiblio.")
+        except Exception as e:
+            append_out(f"Failed to trigger ibiblio update for {filename}: {e}")
+            return "failure"
+
+        # Handle .json files for ebook indexing.
+        if trigger_file.suffix.lower() == ".json":
+            try:
+                dest = f"{IBIBLIO}:{IBIBLIO_JSON_DIR}/{filename}"
+                subprocess.run(["scp", str(trigger_file), dest], check=True)
+                append_out(f"Copied {filename} to ibiblio to trigger ebook indexing.")
+            except Exception as e:
+                append_out(f"Failed to trigger ebook indexing for {filename}: {e}")
+                return "failure"
+
+        # If we got to here, all is OK, move trigger file to the DONE directory,
+        # otherwise, it will be retried on the next run.
+        try:
+            shutil.move(str(trigger_file), str(DONE / filename))
+            append_out(f"Moved {filename} to DONE directory")
+        except Exception as e:
+            append_out(f"Failed to move {filename} to DONE directory: {e}")
+            return "failure"
+
+        return "success"
 
     # Mark the start of this run and acquire lock.
+    acquire_lock()
     setup_logging()
     LOGGER.info("Starting dopull version %s", VERSION)
-    LASTRUNFILE.write_text(f"{dt.datetime.now().isoformat()}\n", encoding="utf-8")
-    acquire_lock()
 
     # Ensure DONE directory exists.
     DONE.mkdir(parents=True, exist_ok=True)
@@ -146,69 +211,20 @@ def main() -> int:
     # Find trigger files, both .txt and .json.
     trig_files = sorted(PUSHDIR.glob("*.txt")) + sorted(PUSHDIR.glob("*.json"))
     if not trig_files:
-        append_out("No files found, exiting.")
+        if LOGGER.handlers:
+            LOGGER.info("No files found, exiting.")
         return 0
 
+    had_failure = False
     for trigger_file in trig_files:
-        bombed = False
-        filename = trigger_file.name
-        append_out(f"Processing file: {filename}")
+        # Clear output file, so we only capture logs relevant to this file's processing.
+        OUTFILE.unlink(missing_ok=True)
+        result = process_trigger_file(trigger_file)
+        if result != "success":
+            had_failure = True
+        send_notification(trigger_file.name, user, result)
 
-        # Get owner of file (user).
-        user = BOSS
-        try:
-            user = get_file_owner(trigger_file)
-            append_out(f"Owner of file: {user}")
-        except Exception as e:
-            append_out(f"Failed to get owner of file: {e}; falling back to {user}")
-
-        # Extract book number from filename (assuming format like "12345.txt" or "12345.json").
-        book_number = trigger_file.stem
-        if not book_number.isdigit():
-            append_out(f"Skipping invalid trigger file (non-numeric book number): {filename}")
-            bombed = True
-            continue
-
-        # This is where .zip.trig files go on ibiblio:
-        DOPULL_LOG_DIR = os.path.join(PRIVATE, 'logs', 'dopull')
-
-        # ibiblio needs to trigger other actions after the pull,
-        # so we just trigger the pull there and let it do the rest.
-        print(f"Trigger processing of #{book_number} on ibiblio...")
-        run_ssh_command(IBIBLIO, "touch", [f"{DOPULL_LOG_DIR}/{book_number}.zip.trig"])
-        print("Success!\n")
-
-        # If this is a .json file, copy it to the ibiblio JSON dir to trigger ebook indexing.
-        if trigger_file.suffix.lower() == ".json":
-            try:
-                dest = f"{IBIBLIO}:{IBIBLIO_JSON_DIR}/{filename}"
-                subprocess.run(
-                    ["scp", str(trigger_file), dest],
-                    check=True,
-                )
-                append_out(f"Copied {filename} to ibiblio to trigger ebook indexing.")
-            except Exception as e:
-                append_out(f"Failed to copy {filename} to {IBIBLIO_JSON_DIR}: {e}")
-                bombed = True
-                continue
-
-        # Move the trigger file to the DONE directory.
-        append_out(f"Moving {filename} to DONE directory")
-        shutil.move(str(trigger_file), str(DONE / filename))
-
-        result = "success" if not bombed else "failure"
-        subject = f"{filename} processed {result}"
-        # Send email to user notifying of success/failure.
-        try:
-            with OUTFILE.open("r", encoding="utf-8") as fh:
-                log_content = fh.read()
-            send_email(subject, user, log_content)
-            OUTFILE.unlink(missing_ok=True)
-        except Exception as e:
-            append_out(f"Failed to send email to {user}: {e}")
-
-    append_out("")
-    return 0
+    return 1 if had_failure else 0
 
 
 if __name__ == "__main__":
