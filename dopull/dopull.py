@@ -19,7 +19,7 @@ try:
 except ImportError:
     pwd = None
 
-VERSION = "2026.05.29"
+VERSION = "2026.06.09"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 # Parent directory of where to look for files to push out.
@@ -33,11 +33,9 @@ LASTRUNFILE = Path(os.getenv("LASTRUNFILE", str(SCRIPT_DIR / "logs/lastrun.txt")
 LOGFILE = Path(os.getenv("LOGFILE", str(SCRIPT_DIR / "logs/dopull.log")))
 # Lock file to prevent multiple dopulls running at the same time.
 PULLRUNNING = Path(os.getenv("PULLRUNNING", str(SCRIPT_DIR / ".dopull-running")))
-# Trigger directory for JSON processing on ibiblio (kept for compatibility with shell config).
 IBIBLIO = "gutenberg.login.ibiblio.org"
 PRIVATE = os.getenv('PRIVATE') or ''
 IBIBLIO_DOPULL_DIR = os.path.join(PRIVATE, 'logs', 'dopull')
-IBIBLIO_JSON_DIR = os.path.join(PRIVATE, 'logs', 'json')
 # Email address to send trouble reports to.
 BOSS = os.getenv("BOSS", "pterodactyl@fastmail.com")
 LOGGER = logging.getLogger("dopull")
@@ -125,7 +123,6 @@ def main() -> int:
     • For each trigger file found in "push" directory,
         ◦ Get owner of file (user)
         ◦ Trigger ebook update by copying it to the ibiblio dopull dir.
-        ◦ If file is .json, trigger ebook indexing by copying it to the ibiblio JSON dir.
         ◦ Move file to DONE archive
         ◦ Send success/fail email to user
     """
@@ -178,16 +175,6 @@ def main() -> int:
         except Exception as e:
             append_out(f"Failed to trigger ibiblio update for {filename}: {e}")
             return "failure"
-
-        # Handle .json files for ebook indexing.
-        if trigger_file.suffix.lower() == ".json":
-            try:
-                dest = f"{IBIBLIO}:{IBIBLIO_JSON_DIR}/{filename}"
-                subprocess.run(["scp", str(trigger_file), dest], check=True)
-                append_out(f"Copied {filename} to ibiblio to trigger ebook indexing.")
-            except Exception as e:
-                append_out(f"Failed to trigger ebook indexing for {filename}: {e}")
-                return "failure"
 
         # If we got to here, all is OK, move trigger file to the DONE directory,
         # otherwise, it will be retried on the next run.
