@@ -59,7 +59,7 @@ def scan_dopull_log():
     If both .zip.trig and .json files are present for the same ebook number:
     (Workflow creates a .json, file, then Errata Workbench creates a .zip.trig file)
     should be OK, the repo has all the changes, and we need the trigger file in any case.
-    Repo pull will occur twice, but the second will have no changes, snd this should be too rare to worry about.
+    Repo pull will occur twice, but the second will have no changes, and this should be too rare to worry about.
     """
     for filename in sorted(os.listdir(DOPULL_LOG_DIR)):
         mode = os.stat(os.path.join(DOPULL_LOG_DIR, filename))[stat.ST_MODE]
