@@ -93,14 +93,15 @@ def scan_dopull_log():
                     logging.info(f'moved {filename} to JSON log directory for processing.')
 
                     # Create a corresponding .zip.trig trigger file
-                    trigger_file = os.path.join(DOPULL_LOG_DIR, ebook_num + '.zip.trig')
+                    trigger_file = os.path.join(DOPUSH_LOG_DIR, ebook_num + '.zip.trig')
                     if not os.path.exists(trigger_file):
                         with open(trigger_file, 'w') as file:
                             pass
-
-                # Move file to the DOPUSH_LOG_DIR to trigger updating
-                shutil.move(os.path.join(DOPULL_LOG_DIR, filename),
-                                 os.path.join(DOPUSH_LOG_DIR, filename))
+                else:
+                    # Move file to the DOPUSH_LOG_DIR to trigger updating
+                    trigger_push = os.path.join(DOPUSH_LOG_DIR, filename)
+                    if not os.path.exists(trigger_push):
+                        shutil.move(os.path.join(DOPULL_LOG_DIR, filename), trigger_push)
             except Exception as e:
                 logging.error(f'failed to trigger update for {ebook_num}: {e}')
 
