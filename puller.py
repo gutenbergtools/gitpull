@@ -68,7 +68,7 @@ def scan_dopull_log():
             continue
 
         ebook_num = 0
-        m = re.match(r'^(\d+)\.(zip\.trig|json)$', filename)
+        m = re.match(r'^(\d+)\.(zip\.trig|json|txt)$', filename)
         if m:
             ebook_num = m.group(1)
             if not ebook_num.isdigit():
@@ -98,10 +98,10 @@ def scan_dopull_log():
                         with open(trigger_file, 'w') as file:
                             pass
                 else:
-                    # Move file to the DOPUSH_LOG_DIR to trigger updating
-                    trigger_push = os.path.join(DOPUSH_LOG_DIR, filename)
-                    if not os.path.exists(trigger_push):
-                        shutil.move(os.path.join(DOPULL_LOG_DIR, filename), trigger_push)
+                    # Move .txt or .zip.trig file to the DOPUSH_LOG_DIR to trigger updating
+                    trigger_file = os.path.join(DOPUSH_LOG_DIR, ebook_num + '.zip.trig')
+                    if not os.path.exists(trigger_file):
+                        shutil.move(os.path.join(DOPULL_LOG_DIR, filename), trigger_file)
             except Exception as e:
                 logging.error(f'failed to trigger update for {ebook_num}: {e}')
 

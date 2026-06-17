@@ -169,7 +169,7 @@ def main() -> int:
             if not PRIVATE:
                 append_out("PRIVATE is not set; cannot build ibiblio destination path.")
                 return "failure"
-            dest = f"{IBIBLIO}:{IBIBLIO_DOPULL_DIR}/{book_number}.zip.trig"
+            dest = f"{IBIBLIO}:{IBIBLIO_DOPULL_DIR}"
             subprocess.run(["scp", str(trigger_file), dest], check=True)
             append_out(f"Triggered processing of #{book_number} on ibiblio.")
         except Exception as e:
